@@ -17,12 +17,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
   imagePaths: string[] = [];
-  batchSize = 10;
-  imageFolderPath: string = process.env.IMAGE_FOLDER || path.join(
-    process.env.HOME || process.env.USERPROFILE || '',
-    'Downloads',
-    'images'
-  );
+  batchSize = 50;
+  imageFolderPath: string =
+    process.env.IMAGE_FOLDER ||
+    path.join(
+      process.env.HOME || process.env.USERPROFILE || '',
+      'Downloads',
+      'images',
+    );
   handleConnection(client: Socket) {
     console.log('Client connected:', client.id);
     console.log('Looking for images in:', this.imageFolderPath);
@@ -30,7 +32,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.imagePaths = fs
         .readdirSync(this.imageFolderPath)
         .filter((f) => /\.(jpg|jpeg|png|gif)$/i.test(f))
-        .map((f) => `/images/${f}`); // Assumes /public/images is served
+        .sort((a, b) =>
+          a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
+        )
+        .map((f) => `/images/${f}`);
       console.log('Loaded images:', this.imagePaths.length);
     } else {
       console.error('Image folder not found:', this.imageFolderPath);
