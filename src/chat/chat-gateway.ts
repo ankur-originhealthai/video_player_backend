@@ -1,82 +1,64 @@
 import {
-  SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  SubscribeMessage,
 } from '@nestjs/websockets';
-import { Socket, Server } from 'socket.io';
-@WebSocketGateway(3002, { cors: { origin: '*' } })
-export class Chatgateway implements OnGatewayConnection, OnGatewayDisconnect {
-  @WebSocketServer() server: Server;
-  private readonly url = "http://localhost:3000";
-
-  private readonly allImages = [
-    this.url + "/static/img1.png",
-    this.url + "/static/img2.png",
-    this.url + "/static/img3.png",
-    this.url + "/static/img4.png",
-    this.url + "/static/img5.png",
-    this.url + "/static/img6.png",
-    this.url + "/static/img1.png",
-    this.url + "/static/img2.png",
-    this.url + "/static/img3.png",
-    this.url + "/static/img4.png",
-    this.url + "/static/img5.png",
-    this.url + "/static/img6.png",
-    this.url + "/static/img1.png",
-    this.url + "/static/img2.png",
-    this.url + "/static/img3.png",
-    this.url + "/static/img4.png",
-    this.url + "/static/img5.png",
-    this.url + "/static/img6.png",
-    this.url + "/static/img1.png",
-    this.url + "/static/img2.png",
-    this.url + "/static/img3.png",
-    this.url + "/static/img4.png",
-    this.url + "/static/img5.png",
-    this.url + "/static/img6.png",
-     this.url + "/static/img6.png",
-
-      this.url + "/static/img6.png",
-  ];
-  private readonly CHUNK_SIZE = 5;
-  private clientIndex = new Map<string, number>();
+import { Server, Socket } from 'socket.io';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as dotenv from 'dotenv';
+dotenv.config();
+@WebSocketGateway(3002, {
+  cors: { origin: '*' },
+})
+export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
+  @WebSocketServer()
+  server: Server;
+  imagePaths: string[] = [];
+  batchSize = 10;
+  imageFolderPath: string = process.env.IMAGE_FOLDER || path.join(
+    process.env.HOME || process.env.USERPROFILE || '',
+    'Downloads',
+    'images'
+  );
   handleConnection(client: Socket) {
-    console.log("Client connected:", client.id);
-    this.clientIndex.set(client.id, 0);
+    console.log('Client connected:', client.id);
+    console.log('Looking for images in:', this.imageFolderPath);
+    if (fs.existsSync(this.imageFolderPath)) {
+      this.imagePaths = fs
+        .readdirSync(this.imageFolderPath)
+        .filter((f) => /\.(jpg|jpeg|png|gif)$/i.test(f))
+        .map((f) => `/images/${f}`); // Assumes /public/images is served
+      console.log('Loaded images:', this.imagePaths.length);
+    } else {
+      console.error('Image folder not found:', this.imageFolderPath);
+    }
+    client.data.index = 0;
   }
   handleDisconnect(client: Socket) {
-    console.log("Client disconnected:", client.id);
-    this.clientIndex.delete(client.id);
+    console.log('Client disconnected:', client.id);
   }
-  @SubscribeMessage("newMessage")
-  handleNewMessage(client: Socket) {
-    console.log("Received: newMessage from", client.id);
-    this.clientIndex.set(client.id, 0);
-    this.sendNextImages(client);
+  @SubscribeMessage('newMessage')
+  handleInitialStream(client: Socket) {
+    client.emit('metadata', { totalFrames: this.imagePaths.length });
+    this.sendNextBatch(client);
   }
-  @SubscribeMessage("next-batch")
+  @SubscribeMessage('next-batch')
   handleNextBatch(client: Socket) {
-    //console.log("next batch sent")
-    this.sendNextImages(client);
+    this.sendNextBatch(client);
   }
-  private sendNextImages(client: Socket) {
-    const index = this.clientIndex.get(client.id) ?? 0;
-    console.log(index)
-    const nextChunk = this.allImages.slice(index, index + this.CHUNK_SIZE);
-    if (nextChunk.length > 0) {
-      client.emit("reply", nextChunk);
-      this.clientIndex.set(client.id, index + nextChunk.length);
-    } else {
-      client.emit("end-of-stream", { done: true });
-      return 
+  sendNextBatch(client: Socket) {
+    const start = client.data.index || 0;
+    const end = Math.min(start + this.batchSize, this.imagePaths.length);
+    const batch = this.imagePaths
+      .slice(start, end)
+      .map((url) => `http://localhost:3000${url}`);
+    client.emit('reply', batch);
+    client.data.index = end;
+    if (end >= this.imagePaths.length) {
+      client.emit('end-of-stream');
     }
   }
 }
-
-
-
-
-
-

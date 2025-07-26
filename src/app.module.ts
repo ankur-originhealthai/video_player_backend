@@ -11,18 +11,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
       rootPath: join(__dirname,'..', 'public'),
       serveRoot: '/static',
     }),
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      host: 'localhost',
-      port: 5432,
-      username: 'postgres',
-      password: 'postgres',
-      database: 'postgres',
-      entities: [],
-      synchronize: true,
-    }),
   ],
-  
   controllers: [AppController],
   providers: [AppService],
 })
