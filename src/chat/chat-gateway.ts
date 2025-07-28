@@ -6,10 +6,7 @@ import {
   SubscribeMessage,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as dotenv from 'dotenv';
-dotenv.config();
+import { DataSource } from 'typeorm';
 @WebSocketGateway(3002, {
   cors: { origin: '*' },
 })
@@ -18,28 +15,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   server: Server;
   imagePaths: string[] = [];
   batchSize = 50;
-  imageFolderPath: string =
-    process.env.IMAGE_FOLDER ||
-    path.join(
-      process.env.HOME || process.env.USERPROFILE || '',
-      'Downloads',
-      'images',
-    );
-  handleConnection(client: Socket) {
+  constructor(private ds: DataSource) {}
+  async handleConnection(client: Socket) {
     console.log('Client connected:', client.id);
-    console.log('Looking for images in:', this.imageFolderPath);
-    if (fs.existsSync(this.imageFolderPath)) {
-      this.imagePaths = fs
-        .readdirSync(this.imageFolderPath)
-        .filter((f) => /\.(jpg|jpeg|png|gif)$/i.test(f))
-        .sort((a, b) =>
-          a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
-        )
-        .map((f) => `/images/${f}`);
-      console.log('Loaded images:', this.imagePaths.length);
-    } else {
-      console.error('Image folder not found:', this.imageFolderPath);
-    }
+    const rows = await this.ds.query('SELECT * FROM path');
+    console.log('DB Response:', rows);
+   this.imagePaths = rows.map((p) => {
+  const filename = p.url.split('/').pop(); // extract just "frame_1.jpg"
+  return `http://localhost:3000/images/${filename}`;
+});
+    console.log('Loaded image URLs:', this.imagePaths.length);
     client.data.index = 0;
   }
   handleDisconnect(client: Socket) {
@@ -47,7 +32,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
   @SubscribeMessage('newMessage')
   handleInitialStream(client: Socket) {
-    client.emit('metadata', { totalFrames: this.imagePaths.length });
+    client.emit('metadata', { total: this.imagePaths.length });
     this.sendNextBatch(client);
   }
   @SubscribeMessage('next-batch')
@@ -57,9 +42,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   sendNextBatch(client: Socket) {
     const start = client.data.index || 0;
     const end = Math.min(start + this.batchSize, this.imagePaths.length);
-    const batch = this.imagePaths
-      .slice(start, end)
-      .map((url) => `http://localhost:3000${url}`);
+    const batch = this.imagePaths.slice(start, end);
     client.emit('reply', batch);
     client.data.index = end;
     if (end >= this.imagePaths.length) {

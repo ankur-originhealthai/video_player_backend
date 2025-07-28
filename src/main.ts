@@ -1,16 +1,13 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import * as express from 'express';
-import * as path from 'path';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  const folderPath = path.join(
-    process.env.HOME || process.env.USERPROFILE || '',
-    'Downloads',
-    'images'
-  );
-  app.use('/images', express.static(folderPath)); // <-- Serve the folder statically
-  app.enableCors(); // In case you access from different origin
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  app.useStaticAssets('/home/omrl-ankur/Downloads/images', {
+    prefix: '/images',
+  });
   await app.listen(3000);
 }
 bootstrap();
